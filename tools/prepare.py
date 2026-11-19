@@ -3,7 +3,7 @@
 Upotreba: prepare.py <sdl_dir> <rem_dir> <out_dir>"""
 import os, re, shutil, sys
 
-sdl, rem, out = sys.argv[1:4]
+sdl, rem, out, stb = sys.argv[1:5]
 
 def rd(p):
     with open(p, encoding="utf-8", errors="surrogateescape", newline="") as f:
@@ -43,11 +43,13 @@ for f in os.listdir(rem):
     if f.endswith((".cpp", ".h")):
         shutil.copy(os.path.join(rem, f), os.path.join(srcdir, f))
 
+shutil.copy(os.path.join(stb, "stb_vorbis.c"), os.path.join(srcdir, "stb_vorbis.c"))
+
 wr(os.path.join(srcdir, "Android.mk"), """LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE := main
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/../SDL/include
-LOCAL_CPPFLAGS := -std=gnu++11 -DUSE_ZLIB -fexceptions -Wno-narrowing -Wno-write-strings
+LOCAL_CPPFLAGS := -std=gnu++11 -DUSE_ZLIB -DUSE_STB_VORBIS -fexceptions -Wno-narrowing -Wno-write-strings
 LOCAL_CFLAGS := -O2
 LOCAL_SRC_FILES := %s
 LOCAL_SHARED_LIBRARIES := SDL2
