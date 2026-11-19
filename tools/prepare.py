@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Sastavlja Android projekat: SDL2 android-project + REminiscence izvorni kod + zakrpe.
+Upotreba: prepare.py <sdl_dir> <rem_dir> <out_dir>"""
+import os, re, shutil, sys
+
+sdl, rem, out = sys.argv[1:4]
+
+def rd(p):
+    with open(p, encoding="utf-8", errors="surrogateescape", newline="") as f:
+        return f.read()
+
+def wr(p, s):
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+        f.write(s)
+
+def sub(s, old, new, count=1):
+    n = s.count(old)
+    assert n >= 1, "ne nalazim u kodu: %r" % old[:60]
+    if count == 1:
+        assert n == 1, "vise pojavljivanja (%d): %r" % (n, old[:60])
+    return s.replace(old, new)
+
+# 1) SDL android-project kao osnova
+if os.path.exists(out):
+    shutil.rmtree(out)
+shutil.copytree(os.path.join(sdl, "android-project"), out)
+jni = os.path.join(out, "app", "jni")
+os.makedirs(os.path.join(jni, "SDL"))
+for n in ("include", "src"):
+    shutil.copytree(os.path.join(sdl, n), os.path.join(jni, "SDL", n))
+shutil.copy(os.path.join(sdl, "Android.mk"), os.path.join(jni, "SDL", "Android.mk"))
+os.remove(os.path.join(jni, "CMakeLists.txt")) if os.path.exists(os.path.join(jni, "CMakeLists.txt")) else None
+
+# 2) izvorni kod igre
+srcdir = os.path.join(jni, "src")
+shutil.rmtree(srcdir)
+os.makedirs(srcdir)
+files = """collision cpc_player cutscene decode_mac file fs game graphics main menu midi_parser mixer
+mod_player ogg_player piege prf_player protection resource resource_aba resource_mac resource_paq
+scaler screenshot seq_player sfx_player staticres systemstub_sdl unpack util video""".split()
+for f in os.listdir(rem):
+    if f.endswith((".cpp", ".h")):
+        shutil.copy(os.path.join(rem, f), os.path.join(srcdir, f))
+
+wr(os.path.join(srcdir, "Android.mk"), """LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+LOCAL_MODULE := main
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/../SDL/include
+LOCAL_CPPFLAGS := -std=gnu++11 -DUSE_ZLIB -fexceptions -Wno-narrowing -Wno-write-strings
+LOCAL_CFLAGS := -O2
+LOCAL_SRC_FILES := %s
+LOCAL_SHARED_LIBRARIES := SDL2
+LOCAL_LDLIBS := -lz -llog
+include $(BUILD_SHARED_LIBRARY)
+""" % " \\\n    ".join(f + ".cpp" for f in files))
+
+wr(os.path.join(jni, "Application.mk"), """APP_ABI := armeabi-v7a arm64-v8a
+APP_PLATFORM := android-21
+APP_STL := c++_static
+""")
+
+# 3) zakrpa main.cpp
+p = os.path.join(srcdir, "main.cpp")
+s = rd(p)
+helper = r'''
+#ifdef __ANDROID__
+static char g_androidMsg[1500];
+static const char *androidFindDataPath() {
+	static char ext[600];
+	const char *candidates[6];
+	int n = 0;
+	candidates[n++] = "/sdcard/REminiscence/DATA";
+	candidates[n++] = "/storage/emulated/0/REminiscence/DATA";
+	const char *ep = SDL_AndroidGetExternalStoragePath();
+	if (ep) {
+		snprintf(ext, sizeof(ext), "%s/DATA", ep);
+		candidates[n++] = ext;
+	}
+	candidates[n++] = "/sdcard/Android/media/org.libsdl.app/DATA";
+	snprintf(g_androidMsg, sizeof(g_androidMsg), "Nisu pronadjeni fajlovi igre.\n\nStavi ih u folder:\n/sdcard/REminiscence/DATA\n\n(za Macintosh: FLASHBACK.BIN ili FLASHBACK.RSRC i ostali fajlovi iz DATA)\n\nProveravao sam:\n");
+	for (int i = 0; i < n; ++i) {
+		struct stat st;
+		if (stat(candidates[i], &st) == 0 && S_ISDIR(st.st_mode)) {
+			return candidates[i];
+		}
+		size_t l = strlen(g_androidMsg);
+		snprintf(g_androidMsg + l, sizeof(g_androidMsg) - l, "%s\n", candidates[i]);
+	}
+	return 0;
+}
+#endif
+
+int main(int argc, char *argv[]) {'''
+s = sub(s, "\nint main(int argc, char *argv[]) {", helper)
+s = sub(s, '\tg_debugMask = 0;', '''#ifdef __ANDROID__
+	{
+		const char *dp = androidFindDataPath();
+		if (dp) {
+			dataPath = dp;
+		}
+		const char *ip = SDL_AndroidGetInternalStoragePath();
+		if (ip) {
+			savePath = ip;
+		}
+		argc = 1;
+	}
+#endif
+	g_debugMask = 0;''')
+s = sub(s, '\t\tconst int c = getopt_long(argc, argv, "", options, &index);',
+'''#ifdef __ANDROID__
+		(void)options; (void)index;
+		const int c = -1;
+#else
+		const int c = getopt_long(argc, argv, "", options, &index);
+#endif''')
+s = sub(s, '''		error("Unable to find data files, check that all required files are present");''',
+'''		error("Unable to find data files, check that all required files are present");
+#ifdef __ANDROID__
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "REminiscence", g_androidMsg, NULL);
+#endif''')
+wr(p, s)
+
+# 4) zakrpa tastera (Back -> Escape, Shift i inventar na tastere daljinskog)
+p = os.path.join(srcdir, "systemstub_sdl.cpp")
+s = rd(p)
+s = sub(s, "\t\tcase SDLK_ESCAPE:\n", "\t\tcase SDLK_AC_BACK:\n\t\tcase SDLK_ESCAPE:\n", count=0)
+s = sub(s, "\t\tcase SDLK_LSHIFT:\n\t\t\t_pi.shift", "\t\tcase SDLK_LSHIFT:\n\t\tcase SDLK_MENU:\n\t\tcase SDLK_PAGEUP:\n\t\t\t_pi.shift", count=0)
+s = sub(s, "\t\tcase SDLK_TAB:\n", "\t\tcase SDLK_TAB:\n\t\tcase SDLK_PAGEDOWN:\n", count=0)
+wr(p, s)
+
+# 5) Java aktivnost (trazi dozvolu za citanje memorije)
+wr(os.path.join(out, "app/src/main/java/org/libsdl/app/REActivity.java"), """package org.libsdl.app;
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+
+public class REActivity extends SDLActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        if (Build.VERSION.SDK_INT >= 23) {
+            try {
+                if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[] { Manifest.permission.READ_EXTERNAL_STORAGE }, 1);
+                }
+            } catch (Exception e) {
+            }
+        }
+        super.onCreate(savedInstanceState);
+    }
+}
+""")
+
+# 6) manifest, gradle, ime aplikacije
+p = os.path.join(out, "app/src/main/AndroidManifest.xml")
+s = rd(p)
+s = sub(s, '<activity android:name="SDLActivity"', '<activity android:name="REActivity"')
+s = sub(s, '<category android:name="android.intent.category.LAUNCHER" />',
+        '<category android:name="android.intent.category.LAUNCHER" />\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />')
+s = sub(s, '<uses-permission android:name="android.permission.VIBRATE" />',
+        '<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-feature android:name="android.software.leanback" android:required="false" />')
+s = sub(s, 'android:allowBackup="true"', 'android:allowBackup="true"\n        android:requestLegacyExternalStorage="true"\n        android:banner="@mipmap/ic_launcher"')
+wr(p, s)
+
+p = os.path.join(out, "app/build.gradle")
+s = rd(p)
+s = sub(s, "minSdkVersion 19", "minSdkVersion 21")
+s = sub(s, "targetSdkVersion 34", "targetSdkVersion 28")
+s = sub(s, 'arguments "APP_PLATFORM=android-19"', 'arguments "APP_PLATFORM=android-21"')
+s = sub(s, "abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'", "abiFilters 'armeabi-v7a', 'arm64-v8a'", count=0)
+wr(p, s)
+
+wr(os.path.join(out, "app/src/main/res/values/strings.xml"),
+   '<resources>\n    <string name="app_name">Flashback</string>\n</resources>\n')
+print("OK: projekat sastavljen u", out)
