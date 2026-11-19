@@ -19,11 +19,12 @@ jobs:
       - name: Preuzmi SDL2 i REminiscence
         run: |
           git clone --depth 1 --branch release-2.30.8 https://github.com/libsdl-org/SDL.git sdl
+          git clone --depth 1 https://github.com/nothings/stb.git stb
           git clone https://github.com/cyxx/REminiscence.git rem
           git -C rem checkout 947a4dce261aacc4f6ec0c2c90cb9d7e37712c7b
 
       - name: Sastavi Android projekat i primeni zakrpe
-        run: python3 tools/prepare.py sdl rem build
+        run: python3 tools/prepare.py sdl rem build stb
 
       - name: Android SDK/NDK
         run: |
