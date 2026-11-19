@@ -1,0 +1,40 @@
+name: Build Flashback APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preuzmi SDL2 i REminiscence
+        run: |
+          git clone --depth 1 --branch release-2.30.8 https://github.com/libsdl-org/SDL.git sdl
+          git clone https://github.com/cyxx/REminiscence.git rem
+          git -C rem checkout 947a4dce261aacc4f6ec0c2c90cb9d7e37712c7b
+
+      - name: Sastavi Android projekat i primeni zakrpe
+        run: python3 tools/prepare.py sdl rem build
+
+      - name: Android SDK/NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393"
+
+      - name: Gradle build
+        working-directory: build
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Flashback-APK
+          path: build/app/build/outputs/apk/debug/*.apk
