@@ -23,6 +23,9 @@ jobs:
           git clone https://github.com/cyxx/REminiscence.git rem
           git -C rem checkout 947a4dce261aacc4f6ec0c2c90cb9d7e37712c7b
 
+      - name: Python biblioteka za slike
+        run: pip install pillow
+
       - name: Sastavi Android projekat i primeni zakrpe
         run: python3 tools/prepare.py sdl rem build stb
 
