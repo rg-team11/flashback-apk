@@ -95,6 +95,22 @@ static const char *androidFindDataPath() {
 
 int main(int argc, char *argv[]) {'''
 s = sub(s, "\nint main(int argc, char *argv[]) {", helper)
+s = sub(s, '\tif (argc == 2) {\n\t\t// data path as the only', '''#ifdef __ANDROID__
+	{
+		FILE *tf = fopen("/sdcard/REminiscence/log.txt", "w");
+		if (tf) {
+			fclose(tf);
+			freopen("/sdcard/REminiscence/log.txt", "w", stdout);
+			freopen("/sdcard/REminiscence/log.txt", "a", stderr);
+			setvbuf(stdout, NULL, _IONBF, 0);
+			setvbuf(stderr, NULL, _IONBF, 0);
+			g_debugMask = DBG_CUT | DBG_MENU | DBG_RES | DBG_SND | DBG_FILE | DBG_MOD;
+			fprintf(stdout, "REminiscence Android log, data=%s\\n", dataPath);
+		}
+	}
+#endif
+\tif (argc == 2) {
+\t\t// data path as the only''')
 s = sub(s, '\tg_debugMask = 0;', '''#ifdef __ANDROID__
 	{
 		const char *dp = androidFindDataPath();
@@ -128,6 +144,7 @@ p = os.path.join(srcdir, "systemstub_sdl.cpp")
 s = rd(p)
 s = sub(s, "\t\tcase SDLK_ESCAPE:\n", "\t\tcase SDLK_AC_BACK:\n\t\tcase SDLK_ESCAPE:\n", count=0)
 s = sub(s, "\t\tcase SDLK_LSHIFT:\n\t\t\t_pi.shift", "\t\tcase SDLK_LSHIFT:\n\t\tcase SDLK_MENU:\n\t\tcase SDLK_PAGEUP:\n\t\t\t_pi.shift", count=0)
+s = sub(s, "\t\tcase SDLK_RETURN:\n\t\t\t_pi.enter", "\t\tcase SDLK_RETURN:\n\t\tcase SDLK_SELECT:\n\t\tcase SDLK_KP_ENTER:\n\t\t\t_pi.enter", count=0)
 s = sub(s, "\t\tcase SDLK_TAB:\n", "\t\tcase SDLK_TAB:\n\t\tcase SDLK_PAGEDOWN:\n", count=0)
 wr(p, s)
 
@@ -145,7 +162,7 @@ public class REActivity extends SDLActivity {
         if (Build.VERSION.SDK_INT >= 23) {
             try {
                 if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[] { Manifest.permission.READ_EXTERNAL_STORAGE }, 1);
+                    requestPermissions(new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE }, 1);
                 }
             } catch (Exception e) {
             }
@@ -162,7 +179,7 @@ s = sub(s, '<activity android:name="SDLActivity"', '<activity android:name="REAc
 s = sub(s, '<category android:name="android.intent.category.LAUNCHER" />',
         '<category android:name="android.intent.category.LAUNCHER" />\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />')
 s = sub(s, '<uses-permission android:name="android.permission.VIBRATE" />',
-        '<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-feature android:name="android.software.leanback" android:required="false" />')
+        '<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-feature android:name="android.software.leanback" android:required="false" />')
 s = sub(s, 'android:allowBackup="true"', 'android:allowBackup="true"\n        android:requestLegacyExternalStorage="true"\n        android:banner="@mipmap/ic_launcher"')
 wr(p, s)
 
