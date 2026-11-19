@@ -221,6 +221,23 @@ s = rd(p)
 s = sub(s, "g_options.fade_out_palette = true;", "g_options.fade_out_palette = false;")
 wr(p, s)
 
+p = os.path.join(srcdir, "video.cpp")
+s = rd(p)
+s = sub(s, """	} else {
+		_stub->fadeScreen();
+	}
+}""", """	} else {
+		// kao originalni fade-out: paleta ostaje crna (ali bez iscrtavanja stare slike)
+		for (int c = 0; c < 256; ++c) {
+			Color col;
+			col.r = col.g = col.b = 0;
+			_stub->setPaletteEntry(c, &col);
+		}
+		_stub->fadeScreen();
+	}
+}""")
+wr(p, s)
+
 # 5) Java aktivnost (trazi dozvolu za citanje memorije)
 wr(os.path.join(out, "app/src/main/java/org/libsdl/app/REActivity.java"), """package org.libsdl.app;
 
