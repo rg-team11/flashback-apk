@@ -148,6 +148,67 @@ s = sub(s, "\t\tcase SDLK_RETURN:\n\t\t\t_pi.enter", "\t\tcase SDLK_RETURN:\n\t\
 s = sub(s, "\t\tcase SDLK_TAB:\n", "\t\tcase SDLK_TAB:\n\t\tcase SDLK_PAGEDOWN:\n", count=0)
 wr(p, s)
 
+# 4b) dzojped: otvori sve uredjaje, logovanje dugmadi, dodatni tasteri
+s = sub(s, """		SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+		if (SDL_IsGameController(kJoystickIndex)) {
+			_controller = SDL_GameControllerOpen(kJoystickIndex);
+		}
+		if (!_controller) {
+			_joystick = SDL_JoystickOpen(kJoystickIndex);
+		}
+""", """		SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+		for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+			info("Input device %d: '%s' gamecontroller=%d", i, SDL_JoystickNameForIndex(i), (int)SDL_IsGameController(i));
+		}
+		for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+			if (SDL_IsGameController(i)) {
+				SDL_GameController *c = SDL_GameControllerOpen(i);
+				if (c && !_controller) {
+					_controller = c;
+				}
+			}
+		}
+		if (!_controller) {
+			for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+				SDL_Joystick *j = SDL_JoystickOpen(i);
+				if (j && !_joystick) {
+					_joystick = j;
+				}
+			}
+		}
+""")
+s = sub(s, """			const bool pressed = (ev.jbutton.state == SDL_PRESSED);
+			switch (ev.jbutton.button) {
+""", """			const bool pressed = (ev.jbutton.state == SDL_PRESSED);
+			info("joystick button %d pressed=%d", (int)ev.jbutton.button, (int)pressed);
+			switch (ev.jbutton.button) {
+			case 4:
+				_pi.shift = pressed;
+				break;
+			case 5:
+				_pi.backspace = pressed;
+				break;
+			case 6:
+			case 7:
+			case 8:
+			case 9:
+				_pi.escape = pressed;
+				break;
+""")
+s = sub(s, """			const bool pressed = (ev.cbutton.state == SDL_PRESSED);
+			switch (ev.cbutton.button) {
+""", """			const bool pressed = (ev.cbutton.state == SDL_PRESSED);
+			info("controller button %d pressed=%d", (int)ev.cbutton.button, (int)pressed);
+			switch (ev.cbutton.button) {
+			case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+				_pi.shift = pressed;
+				break;
+			case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+				_pi.backspace = pressed;
+				break;
+""")
+wr(p, s)
+
 # 5) Java aktivnost (trazi dozvolu za citanje memorije)
 wr(os.path.join(out, "app/src/main/java/org/libsdl/app/REActivity.java"), """package org.libsdl.app;
 
