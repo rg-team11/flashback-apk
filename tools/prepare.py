@@ -93,7 +93,17 @@ static const char *androidFindDataPath() {
 }
 #endif
 
-int main(int argc, char *argv[]) {'''
+#ifdef __ANDROID__
+static int re_main(int argc, char *argv[]);
+int main(int argc, char *argv[]) {
+	int r = re_main(argc, argv);
+	fflush(NULL);
+	exit(r); // ubij proces da svako sledece pokretanje krene cisto
+}
+static int re_main(int argc, char *argv[]) {
+#else
+int main(int argc, char *argv[]) {
+#endif'''
 s = sub(s, "\nint main(int argc, char *argv[]) {", helper)
 s = sub(s, '\tif (argc == 2) {\n\t\t// data path as the only', '''#ifdef __ANDROID__
 	{
@@ -104,7 +114,7 @@ s = sub(s, '\tif (argc == 2) {\n\t\t// data path as the only', '''#ifdef __ANDRO
 			freopen("/sdcard/REminiscence/log.txt", "a", stderr);
 			setvbuf(stdout, NULL, _IONBF, 0);
 			setvbuf(stderr, NULL, _IONBF, 0);
-			g_debugMask = DBG_CUT | DBG_MENU | DBG_RES | DBG_SND | DBG_FILE | DBG_MOD;
+			g_debugMask = DBG_MENU | DBG_SND | DBG_FILE;
 			fprintf(stdout, "REminiscence Android log, data=%s\\n", dataPath);
 		}
 	}
@@ -114,6 +124,10 @@ s = sub(s, '\tif (argc == 2) {\n\t\t// data path as the only', '''#ifdef __ANDRO
 s = sub(s, '\tg_debugMask = 0;', '''#ifdef __ANDROID__
 	{
 		const char *dp = androidFindDataPath();
+		for (int tries = 0; !dp && tries < 60; ++tries) { // sacekaj dozvolu za pristup memoriji
+			SDL_Delay(500);
+			dp = androidFindDataPath();
+		}
 		if (dp) {
 			dataPath = dp;
 		}
