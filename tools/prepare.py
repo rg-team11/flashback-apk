@@ -223,6 +223,14 @@ s = sub(s, """			const bool pressed = (ev.cbutton.state == SDL_PRESSED);
 """)
 wr(p, s)
 
+# 4c) mod plejer: tempo 0 (Mac verzija) izaziva beskonacnu petlju u mix() -> zamrzavanje
+p = os.path.join(srcdir, "mod_player.cpp")
+s = rd(p)
+s = sub(s, "_impl->_songTempo = tempo;", "_impl->_songTempo = (tempo > 0) ? tempo : 125;")
+s = sub(s, "const int samplesPerTick = _mixingRate / (50 * _songTempo / BASE_TEMPO);",
+        "int samplesPerTick = _mixingRate / (50 * (_songTempo > 0 ? _songTempo : BASE_TEMPO) / BASE_TEMPO);\n\t\tif (samplesPerTick < 1) {\n\t\t\tsamplesPerTick = 1;\n\t\t}")
+wr(p, s)
+
 # 5) Java aktivnost (trazi dozvolu za citanje memorije)
 wr(os.path.join(out, "app/src/main/java/org/libsdl/app/REActivity.java"), """package org.libsdl.app;
 
