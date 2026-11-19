@@ -105,22 +105,6 @@ static int re_main(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 #endif'''
 s = sub(s, "\nint main(int argc, char *argv[]) {", helper)
-s = sub(s, '\tif (argc == 2) {\n\t\t// data path as the only', '''#ifdef __ANDROID__
-	{
-		FILE *tf = fopen("/sdcard/REminiscence/log.txt", "w");
-		if (tf) {
-			fclose(tf);
-			freopen("/sdcard/REminiscence/log.txt", "w", stdout);
-			freopen("/sdcard/REminiscence/log.txt", "a", stderr);
-			setvbuf(stdout, NULL, _IONBF, 0);
-			setvbuf(stderr, NULL, _IONBF, 0);
-			g_debugMask = DBG_MENU | DBG_SND | DBG_FILE;
-			fprintf(stdout, "REminiscence Android log, data=%s\\n", dataPath);
-		}
-	}
-#endif
-\tif (argc == 2) {
-\t\t// data path as the only''')
 s = sub(s, '\tg_debugMask = 0;', '''#ifdef __ANDROID__
 	{
 		const char *dp = androidFindDataPath();
@@ -231,6 +215,12 @@ s = sub(s, "const int samplesPerTick = _mixingRate / (50 * _songTempo / BASE_TEM
         "int samplesPerTick = _mixingRate / (50 * (_songTempo > 0 ? _songTempo : BASE_TEMPO) / BASE_TEMPO);\n\t\tif (samplesPerTick < 1) {\n\t\t\tsamplesPerTick = 1;\n\t\t}")
 wr(p, s)
 
+# 4d) bez paletnog fade-out efekta (prikazivao je zaostalu sliku jarkim bojama)
+p = os.path.join(srcdir, "main.cpp")
+s = rd(p)
+s = sub(s, "g_options.fade_out_palette = true;", "g_options.fade_out_palette = false;")
+wr(p, s)
+
 # 5) Java aktivnost (trazi dozvolu za citanje memorije)
 wr(os.path.join(out, "app/src/main/java/org/libsdl/app/REActivity.java"), """package org.libsdl.app;
 
@@ -245,7 +235,7 @@ public class REActivity extends SDLActivity {
         if (Build.VERSION.SDK_INT >= 23) {
             try {
                 if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[] { Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE }, 1);
+                    requestPermissions(new String[] { Manifest.permission.READ_EXTERNAL_STORAGE }, 1);
                 }
             } catch (Exception e) {
             }
@@ -262,7 +252,7 @@ s = sub(s, '<activity android:name="SDLActivity"', '<activity android:name="REAc
 s = sub(s, '<category android:name="android.intent.category.LAUNCHER" />',
         '<category android:name="android.intent.category.LAUNCHER" />\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />')
 s = sub(s, '<uses-permission android:name="android.permission.VIBRATE" />',
-        '<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-feature android:name="android.software.leanback" android:required="false" />')
+        '<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-feature android:name="android.software.leanback" android:required="false" />')
 s = sub(s, 'android:allowBackup="true"', 'android:allowBackup="true"\n        android:requestLegacyExternalStorage="true"\n        android:banner="@mipmap/ic_launcher"')
 wr(p, s)
 
@@ -276,4 +266,26 @@ wr(p, s)
 
 wr(os.path.join(out, "app/src/main/res/values/strings.xml"),
    '<resources>\n    <string name="app_name">Flashback</string>\n</resources>\n')
+
+# 7) ikonica i TV baner (opciono): ako u repozitorijumu postoji icon.png
+icon_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "icon.png")
+if os.path.exists(icon_src):
+    from PIL import Image
+    im = Image.open(icon_src).convert("RGBA")
+    w, h = im.size
+    side = min(w, h)
+    sq = im.crop(((w - side) // 2, (h - side) // 2, (w - side) // 2 + side, (h - side) // 2 + side))
+    for d, sz in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):
+        sq.resize((sz, sz), Image.LANCZOS).save(os.path.join(out, "app/src/main/res/mipmap-%s/ic_launcher.png" % d))
+    # TV baner 320x180: slika u celini na crnoj pozadini
+    ban = Image.new("RGBA", (320, 180), (0, 0, 0, 255))
+    r = min(320 / w, 180 / h)
+    nw, nh = int(w * r), int(h * r)
+    ban.paste(im.resize((nw, nh), Image.LANCZOS), ((320 - nw) // 2, (180 - nh) // 2))
+    ban.convert("RGB").save(os.path.join(out, "app/src/main/res/mipmap-xhdpi/banner.png"))
+    mp = os.path.join(out, "app/src/main/AndroidManifest.xml")
+    ms = rd(mp)
+    wr(mp, sub(ms, 'android:banner="@mipmap/ic_launcher"', 'android:banner="@mipmap/banner"'))
+    print("ikonica postavljena iz icon.png")
+
 print("OK: projekat sastavljen u", out)
